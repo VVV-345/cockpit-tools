@@ -940,6 +940,22 @@ where
     }
 }
 
+pub fn sync_current_account_to_configured_wsl() -> Result<bool, String> {
+    let Some(account) = get_current_account() else {
+        return Ok(false);
+    };
+    let Some(wsl_dir) = configured_codex_wsl_config_dir() else {
+        return Ok(false);
+    };
+    write_account_bundle_to_dir(&wsl_dir, &account)?;
+    logger::log_info(&format!(
+        "[Codex切号] 已同步默认账号到 WSL 配置目录: account_id={}, target_dir={}",
+        account.id,
+        wsl_dir.display()
+    ));
+    Ok(true)
+}
+
 fn is_default_codex_projection_dir(dir: &Path) -> bool {
     if projection_dirs_equal(dir, &get_codex_home()) {
         return true;
@@ -1189,4 +1205,3 @@ pub async fn sync_bound_oauth_consumers_after_reauth(account_id: &str) -> Result
 
     sync_managed_account_sidecar_checked(&account)
 }
-

@@ -217,7 +217,9 @@ fn handle_zcode_oauth_deep_links(args: &[String]) -> bool {
 fn summarize_deep_link_args(args: &[String]) -> Vec<String> {
     args.iter()
         .map(|value| {
-            if value.trim().to_ascii_lowercase().starts_with("zcode://") {
+            if let Some(redacted) = modules::account_pool_companion::summarize_deep_link(value) {
+                redacted
+            } else if value.trim().to_ascii_lowercase().starts_with("zcode://") {
                 "zcode://<oauth-callback>".to_string()
             } else {
                 value.clone()
@@ -255,7 +257,10 @@ pub fn run() {
                 args.len()
             ));
             let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+            let account_pool_handled =
+                modules::account_pool_companion::handle_deep_links(app, &args);
             let handled = zcode_oauth_handled
+                || account_pool_handled
                 || modules::external_import::handle_external_import_args(
                     app,
                     &args,
@@ -435,7 +440,10 @@ pub fn run() {
                         summarize_deep_link_args(&args)
                     ));
                     let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+                    let account_pool_handled =
+                        modules::account_pool_companion::handle_deep_links(&app_handle, &args);
                     let handled = zcode_oauth_handled
+                        || account_pool_handled
                         || modules::external_import::handle_external_import_args(
                             &app_handle,
                             &args,
@@ -459,7 +467,10 @@ pub fn run() {
                             summarize_deep_link_args(&args)
                         ));
                         let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+                        let account_pool_handled =
+                            modules::account_pool_companion::handle_deep_links(&app_handle, &args);
                         let handled = zcode_oauth_handled
+                            || account_pool_handled
                             || modules::external_import::handle_external_import_args(
                                 &app_handle,
                                 &args,
@@ -1413,7 +1424,10 @@ pub fn run() {
                         summarize_deep_link_args(&args)
                     ));
                     let zcode_oauth_handled = handle_zcode_oauth_deep_links(&args);
+                    let account_pool_handled =
+                        modules::account_pool_companion::handle_deep_links(app_handle, &args);
                     let handled = zcode_oauth_handled
+                        || account_pool_handled
                         || modules::external_import::handle_external_import_args(
                             app_handle,
                             &args,
