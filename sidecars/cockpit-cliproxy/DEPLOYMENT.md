@@ -37,13 +37,43 @@ Credential files are written atomically with mode `0600`.
 
 Successful writes return `202 Accepted`, a new ETag when applicable, and
 `restartRequired: true`. The running gateway continues using its startup
-manifest and auth snapshot until restarted. After a batch of writes, call
+manifest and auth snapshot until restarted, except for the explicit routing
+policy application described below. After a batch of other writes, call
 `POST /admin/v1/restart` with the same admin token to request a graceful process
 shutdown. The endpoint returns `202 Accepted`; the process gives active HTTP
 requests the existing ten-second shutdown window before exiting. A supervisor
 must restart the process for the updated snapshot to take effect. The Compose
 service uses `restart: unless-stopped`. Without an external supervisor, the
 process exits and must be started manually.
+
+### Explicit routing policy application
+
+`GET /admin/v1/policy-runtime` returns `persistedRevision`, `activeRevision`,
+`applySupported`, and `blockedReason`. The initial active revision comes from
+the exact manifest bytes read at startup, not a later read of the saved file.
+Saving a manifest does not apply its routing policy.
+
+`POST /admin/v1/policy-apply` requires the saved revision in `If-Match`. It only
+applies `routingStrategy` and `customRoutingRules` for the supported global
+Codex OAuth/default pool of 1 to 256 accounts. A successful `200` confirms the
+same saved and active revision. Stale versions return `412`; changes to any
+other manifest field or an unsupported policy are rejected. Read status again
+after a lost response instead of assuming success or automatically retrying.
+
+Applying policy does not restart the process, replace credentials, change
+authorization, or replay requests. Each selector Pick captures one immutable
+policy snapshot, including preferred/backup filtering and ordering. Later
+retries can observe a newer policy. Existing session affinity, dynamic API-key
+priority files, and quota state still affect selection independently; this
+revision does not version those states or enable LiteLLM traffic cutover.
+
+For this server integration, the service manifest is the policy source and
+the existing account-pool page reads and writes it through the admin API.
+Use one service process with no external manifest writers. Keep the manifest
+outside the auth directory and separate from quota/priority state paths. Do not
+share this file with the desktop generator or another service instance: the
+current CAS lock is process-local. Desktop remote administration and a shared
+cross-process policy writer are not implemented.
 
 ## Run locally
 

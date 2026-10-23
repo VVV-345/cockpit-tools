@@ -55,6 +55,8 @@ func (s *relayServer) router() *gin.Engine {
 	})
 	router.GET("/admin/v1/manifest", s.handleGetAdminManifest)
 	router.PUT("/admin/v1/manifest", s.handlePutAdminManifest)
+	router.GET("/admin/v1/policy-runtime", s.handleGetPolicyRuntime)
+	router.POST("/admin/v1/policy-apply", s.handleApplyPolicyRuntime)
 	router.POST("/admin/v1/restart", s.handleAdminRestart)
 	router.GET("/admin/v1/auth-files", s.handleListAdminAuthFiles)
 	router.PUT("/admin/v1/auth-files/:name", s.handlePutAdminAuthFile)

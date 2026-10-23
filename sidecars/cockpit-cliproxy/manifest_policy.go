@@ -111,6 +111,7 @@ type manifest struct {
 	originalIndexByID map[string]int
 	quotaCooldowns    *quotaCooldownStateStore
 	authManager       *coreauth.Manager
+	routingPolicy     *routingPolicyRuntime
 }
 
 type apiKeySpec struct {
@@ -789,6 +790,7 @@ func loadManifest(path string) (*manifest, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}
+	captureRoutingPolicyRuntime(&m, data)
 	m.apiKeyByValue = make(map[string]*apiKeySpec)
 	for i := range m.APIKeys {
 		key := strings.TrimSpace(m.APIKeys[i].Key)

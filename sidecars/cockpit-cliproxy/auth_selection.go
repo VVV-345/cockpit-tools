@@ -336,6 +336,8 @@ func (s *backupAccountSelector) Pick(ctx context.Context, provider, model string
 		return s.fallback.Pick(ctx, provider, model, opts, auths)
 	}
 
+	ctx = withRoutingPolicySnapshot(ctx, s.manifest)
+	policy := routingPolicyForContext(ctx, s.manifest)
 	now := time.Now()
 	preferred := make([]*coreauth.Auth, 0)
 	regular := make([]*coreauth.Auth, 0, len(auths))
@@ -343,7 +345,7 @@ func (s *backupAccountSelector) Pick(ctx context.Context, provider, model string
 	preferredAvailable := false
 	regularAvailable := false
 	for _, auth := range auths {
-		switch s.authUsagePriority(auth) {
+		switch s.authUsagePriority(auth, policy) {
 		case 1:
 			preferred = append(preferred, auth)
 			if authAvailable(auth, model, now) {
@@ -368,12 +370,12 @@ func (s *backupAccountSelector) Pick(ctx context.Context, provider, model string
 	return s.fallback.Pick(ctx, provider, model, opts, backup)
 }
 
-func (s *backupAccountSelector) authUsagePriority(auth *coreauth.Auth) int {
+func (s *backupAccountSelector) authUsagePriority(auth *coreauth.Auth, policy *routingPolicySnapshot) int {
 	account := accountForAuthInManifest(s.manifest, auth)
 	if account == nil {
 		return 0
 	}
-	for _, rule := range s.manifest.CustomRoutingRules {
+	for _, rule := range policy.rules {
 		if rule.AccountID == account.ID {
 			if rule.IsPreferred {
 				return 1
@@ -405,6 +407,7 @@ func (s *backupAccountSelector) ReportAuthSelectionFailure(ctx context.Context, 
 
 func (s *cockpitSelector) Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*coreauth.Auth) (*coreauth.Auth, error) {
 	_ = opts
+	ctx = withRoutingPolicySnapshot(ctx, s.manifest)
 	selectionStats := authPoolSelectionStats{candidateAuths: len(auths)}
 	auths = s.filterAuthsForAPIKeyScope(ctx, auths)
 	selectionStats.scopedAuths = len(auths)
@@ -473,7 +476,7 @@ func (s *cockpitSelector) Pick(ctx context.Context, provider, model string, opts
 	s.cursor++
 	s.mu.Unlock()
 
-	ordered := s.orderAuths(available, start)
+	ordered := s.orderAuthsWithPolicy(available, start, routingPolicyForContext(ctx, s.manifest))
 	if isImageRequestKind(requestKind) {
 		ordered = s.orderImageAuths(available, start)
 	} else {
@@ -908,10 +911,17 @@ func resolveBaseModelKey(model string) string {
 }
 
 func (s *cockpitSelector) orderAuths(auths []*coreauth.Auth, start int) []*coreauth.Auth {
+	if s == nil {
+		return auths
+	}
+	return s.orderAuthsWithPolicy(auths, start, routingPolicyForContext(nil, s.manifest))
+}
+
+func (s *cockpitSelector) orderAuthsWithPolicy(auths []*coreauth.Auth, start int, policy *routingPolicySnapshot) []*coreauth.Auth {
 	if len(auths) <= 1 || s == nil || s.manifest == nil {
 		return auths
 	}
-	strategy := strings.TrimSpace(strings.ToLower(s.manifest.RoutingStrategy))
+	strategy := strings.TrimSpace(strings.ToLower(policy.strategy))
 	if strategy == "random" {
 		out := append([]*coreauth.Auth(nil), auths...)
 		rand.Shuffle(len(out), func(i, j int) {
@@ -920,7 +930,7 @@ func (s *cockpitSelector) orderAuths(auths []*coreauth.Auth, start int) []*corea
 		return out
 	}
 	if strategy == "custom" {
-		return s.orderCustom(auths, start)
+		return s.orderCustom(auths, start, policy)
 	}
 	out := append([]*coreauth.Auth(nil), auths...)
 	sort.SliceStable(out, func(i, j int) bool {
@@ -1033,9 +1043,9 @@ func compareInt64PtrAsc(left, right *int64) int {
 	}
 }
 
-func (s *cockpitSelector) orderCustom(auths []*coreauth.Auth, start int) []*coreauth.Auth {
+func (s *cockpitSelector) orderCustom(auths []*coreauth.Auth, start int, policy *routingPolicySnapshot) []*coreauth.Auth {
 	rules := make(map[string]customRoutingRule)
-	for _, rule := range s.manifest.CustomRoutingRules {
+	for _, rule := range policy.rules {
 		if strings.TrimSpace(rule.AccountID) == "" {
 			continue
 		}
@@ -1147,7 +1157,7 @@ func (s *cockpitSelector) emitAuthSelected(ctx context.Context, auth *coreauth.A
 	account := s.accountForAuth(auth)
 	routingStrategy := ""
 	if s.manifest != nil {
-		routingStrategy = strings.TrimSpace(s.manifest.RoutingStrategy)
+		routingStrategy = strings.TrimSpace(routingPolicyForContext(ctx, s.manifest).strategy)
 	}
 	s.emitter.emit(requestDiagnosticPayload{
 		Type:            "auth_selected",
