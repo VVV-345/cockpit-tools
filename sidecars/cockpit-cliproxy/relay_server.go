@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"os"
+	"sync"
 
 	"strings"
 
@@ -32,6 +33,10 @@ type relayServer struct {
 	runtime            executorRuntime
 	cfg                *config.Config
 	manifest           *manifest
+	manifestAdmin      *manifestAdminStore
+	adminToken         string
+	restartService     func()
+	restartOnce        sync.Once
 	authManager        *coreauth.Manager
 	emitter            *eventEmitter
 	policy             *requestPolicy
@@ -48,6 +53,12 @@ func (s *relayServer) router() *gin.Engine {
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+	router.GET("/admin/v1/manifest", s.handleGetAdminManifest)
+	router.PUT("/admin/v1/manifest", s.handlePutAdminManifest)
+	router.POST("/admin/v1/restart", s.handleAdminRestart)
+	router.GET("/admin/v1/auth-files", s.handleListAdminAuthFiles)
+	router.PUT("/admin/v1/auth-files/:name", s.handlePutAdminAuthFile)
+	router.DELETE("/admin/v1/auth-files/:name", s.handleDeleteAdminAuthFile)
 	router.GET("/v1/models", s.handleModels)
 	router.GET(cockpitQuotaPath, s.handleCockpitQuota)
 	router.POST("/v1/cockpit/auth/reset", s.handleResetAuthState)

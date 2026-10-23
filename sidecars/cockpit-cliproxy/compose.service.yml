@@ -7,4 +7,6 @@ services:
       - "127.0.0.1:8317:8317"
     volumes:
       - ./data:/data
+    environment:
+      COCKPIT_ADMIN_TOKEN: ${COCKPIT_ADMIN_TOKEN:-}
     restart: unless-stopped

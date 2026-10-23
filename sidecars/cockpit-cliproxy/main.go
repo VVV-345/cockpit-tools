@@ -184,9 +184,17 @@ func main() {
 	liveHandler := codexlive.NewHandler(coreManager, cfg)
 	defer liveHandler.Close()
 	relay := &relayServer{
-		runtime:            runtime,
-		cfg:                cfg,
-		manifest:           m,
+		runtime:       runtime,
+		cfg:           cfg,
+		manifest:      m,
+		manifestAdmin: &manifestAdminStore{path: *manifestPath, authDir: cfg.AuthDir},
+		adminToken:    os.Getenv("COCKPIT_ADMIN_TOKEN"),
+		restartService: func() {
+			go func() {
+				time.Sleep(250 * time.Millisecond)
+				cancel()
+			}()
+		},
 		authManager:        coreManager,
 		emitter:            emitter,
 		policy:             policy,
