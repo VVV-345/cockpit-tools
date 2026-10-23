@@ -1706,6 +1706,20 @@ func TestRelayServerHandlesCORSPreflight(t *testing.T) {
 	}
 }
 
+func TestRelayServerHealthzDoesNotRequireAPIKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := testRelayRouter(&fakeRuntime{})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", w.Code, w.Body.String())
+	}
+	if strings.TrimSpace(w.Body.String()) != `{"status":"ok"}` {
+		t.Fatalf("unexpected health response: %s", w.Body.String())
+	}
+}
+
 func testRelayRouter(runtime executorRuntime) *gin.Engine {
 	m := &manifest{
 		APIKeys:  []apiKeySpec{{ID: "key_1", Label: "Test key", Key: "client-key", Enabled: true}},

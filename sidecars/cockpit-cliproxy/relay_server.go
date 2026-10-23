@@ -45,6 +45,9 @@ func (s *relayServer) router() *gin.Engine {
 	router.Use(gin.Recovery())
 	router.Use(corsMiddleware())
 	router.Use(s.policy.middleware())
+	router.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
 	router.GET("/v1/models", s.handleModels)
 	router.GET(cockpitQuotaPath, s.handleCockpitQuota)
 	router.POST("/v1/cockpit/auth/reset", s.handleResetAuthState)

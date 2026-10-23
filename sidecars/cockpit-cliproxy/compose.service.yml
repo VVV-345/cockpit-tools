@@ -1,0 +1,10 @@
+services:
+  cockpit-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8317:8317"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
