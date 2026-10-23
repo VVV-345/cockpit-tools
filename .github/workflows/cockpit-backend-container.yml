@@ -1,0 +1,71 @@
+name: Cockpit Backend Container
+
+on:
+  push:
+    branches:
+      - codex/cockpit-backend-replacement
+    paths:
+      - sidecars/cockpit-cliproxy/**
+      - .github/workflows/cockpit-backend-container.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - sidecars/cockpit-cliproxy/**
+      - .github/workflows/cockpit-backend-container.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Linux image
+        run: >-
+          docker buildx build --load --platform linux/amd64
+          --file sidecars/cockpit-cliproxy/Dockerfile
+          --tag cockpit-backend:ci
+          sidecars/cockpit-cliproxy
+
+      - name: Smoke test service and API key boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          data_dir="$(mktemp -d)"
+          container_id=""
+          cleanup() {
+            if [[ -n "$container_id" ]]; then
+              docker rm --force "$container_id" >/dev/null
+            fi
+            rm -rf "$data_dir"
+          }
+          trap cleanup EXIT
+
+          mkdir -p "$data_dir/auth"
+          cat > "$data_dir/config.yaml" <<'EOF'
+          host: 0.0.0.0
+          port: 8317
+          auth-dir: /data/auth
+          usage-statistics-enabled: true
+          EOF
+          cat > "$data_dir/manifest.json" <<'EOF'
+          {"locale":"en","apiKeys":[{"id":"ci","key":"ci-smoke-key","accountIds":[],"allowedModels":["gpt-smoke"],"enabled":true}],"accounts":[],"modelIds":["gpt-smoke"]}
+          EOF
+          sudo chown -R 10001:10001 "$data_dir"
+
+          container_id="$(docker run --detach --publish 127.0.0.1:18317:8317 --volume "$data_dir:/data" cockpit-backend:ci)"
+          curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 http://127.0.0.1:18317/healthz
+
+          model_status="$(curl --silent --output /tmp/cockpit-models.json --write-out '%{http_code}' --header 'Authorization: Bearer ci-smoke-key' http://127.0.0.1:18317/v1/models)"
+          [[ "$model_status" == "200" ]]
+          grep -q 'gpt-smoke' /tmp/cockpit-models.json
+
+          unauthenticated_status="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18317/v1/models)"
+          [[ "$unauthenticated_status" == "401" ]]
+
+          quota_status="$(curl --silent --output /tmp/cockpit-quota.json --write-out '%{http_code}' --header 'Authorization: Bearer ci-smoke-key' http://127.0.0.1:18317/v1/cockpit/quota)"
+          [[ "$quota_status" == "200" ]]
